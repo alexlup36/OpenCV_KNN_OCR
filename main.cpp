@@ -2,11 +2,14 @@
 #include <iostream>
 #include <string>
 #include <opencv2/opencv.hpp>
+#include <opencv2/ml.hpp>
 
 const int IMAGE_WIDTH = 20;
 const int IMAGE_HEIGHT = 30;
 
 const char* INPUT_TRAINING_IMAGE_PATH = "./Input/training_chars.png";
+const char* CLASSIFICATION_INTS_PATH = "./Output/classifications.xml";
+const char* CLASSIFICATION_IMAGES_PATH = "./Output/images.xml";
 
 std::vector<int> validDigits = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
 std::vector<int> validChars = { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
@@ -60,7 +63,32 @@ void writeClassificationToFile(const std::string &fileName, const std::string &s
 	fs.release();
 }
 
-int main(int argc [[maybe_unused]], char **argv [[maybe_unused]])
+cv::Mat readClassificationFromFile(const std::string &fileName, const std::string &sectionName)
+{
+	// Open classification file
+	cv::FileStorage fs(fileName, cv::FileStorage::READ);
+
+	if (fs.isOpened() == false)
+	{
+		std::cout << "Failed to open the classification file: " << fileName << "\n";
+		return cv::Mat();
+	}
+
+	// Read classification data
+	cv::Mat matClassification;
+	fs[sectionName] >> matClassification;
+	fs.release();
+
+	return matClassification;
+}
+
+bool fileExists(const char* filename)
+{
+	std::ifstream infile(filename);
+	return infile.good();
+}
+
+int doClassification()
 {
 	// Input image
 	cv::Mat inputTrainingNumbersImage;
@@ -129,8 +157,46 @@ int main(int argc [[maybe_unused]], char **argv [[maybe_unused]])
 	}
 
 	// Write classification data to classification files
-	writeClassificationToFile("./Output/classifications.xml", "classifications", matClassificationInts);
-	writeClassificationToFile("./Output/images.xml", "images", matClassificationImages);
+	writeClassificationToFile(CLASSIFICATION_INTS_PATH, "classifications", matClassificationInts);
+	writeClassificationToFile(CLASSIFICATION_IMAGES_PATH, "images", matClassificationImages);
+
+	return 0;
+}
+
+void doTrainAndTest()
+{
+	// Create KNN object
+}
+
+int main(int argc [[maybe_unused]], char **argv [[maybe_unused]])
+{
+	// Check if we already have the classifiers ready
+	if (!fileExists(CLASSIFICATION_INTS_PATH) || !fileExists(CLASSIFICATION_IMAGES_PATH))
+	{
+		// Do classification for digits and characters
+		if (doClassification() < 0)
+			std::cout << "Failed to do the classification. \n";
+	}
+	else
+	{
+		// Read the classification files
+		matClassificationInts = readClassificationFromFile(CLASSIFICATION_INTS_PATH, "classifications");
+		if (matClassificationInts.empty())
+		{
+			std::cout << "Failed to read classification file: " << CLASSIFICATION_INTS_PATH << "\n";
+			return -1;
+		}
+
+		matClassificationImages = readClassificationFromFile(CLASSIFICATION_IMAGES_PATH, "images");
+		if (matClassificationImages.empty())
+		{
+			std::cout << "Failed to read classification file: " << CLASSIFICATION_IMAGES_PATH << "\n";
+			return -1;
+		}
+	}
+
+	// Use the results of the classification to train the ML algorithm and test it
+	doTrainAndTest();
 
 	return 0;
 }
