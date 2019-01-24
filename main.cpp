@@ -8,6 +8,13 @@ const int IMAGE_HEIGHT = 30;
 
 const char* INPUT_TRAINING_IMAGE_PATH = "./Input/training_chars.png";
 
+std::vector<int> validDigits = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
+std::vector<int> validChars = { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
+        'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
+        'U', 'V', 'W', 'X', 'Y', 'Z' };
+
+cv::Mat matClassificationInts, matClassificationImages;
+
 cv::Mat imagePreprocessThresholding(const cv::Mat &inputImage)
 {
 	cv::Mat grayscaleImage, blurredImage, thresholdedImage;
@@ -35,6 +42,22 @@ cv::Mat imagePreprocessThresholding(const cv::Mat &inputImage)
 	cv::imshow("thresholdedInputImage", thresholdedImage);
 
 	return thresholdedImage;
+}
+
+void writeClassificationToFile(const std::string &fileName, const std::string &sectionName, const cv::Mat &classificationData) 
+{
+	// Open the classification file
+	cv::FileStorage fs(fileName, cv::FileStorage::WRITE);
+
+	if (fs.isOpened() == false)
+	{
+		std::cout << "Failed to open the classification file: " << fileName << "\n";
+		return;
+	}
+
+	// Write classification data to file
+	fs << sectionName << classificationData;
+	fs.release();
 }
 
 int main(int argc [[maybe_unused]], char **argv [[maybe_unused]])
@@ -85,16 +108,29 @@ int main(int argc [[maybe_unused]], char **argv [[maybe_unused]])
 			cv::imshow("resizedROI", threasholdImageROI);
 			// Display the input image together with the detected contours
 			cv::imshow("originalInputImage", inputTrainingNumbersImage);
+
+			// Read input character/digit
+			int inputChar = cv::waitKey(0);
+
+			bool isDigit = std::find(validDigits.begin(), validDigits.end(), inputChar) != validDigits.end();
+			bool isChar = std::find(validChars.begin(), validChars.end(), inputChar) != validChars.end();
+			if (isDigit || isChar) 
+			{
+				// Append the classification integers 
+				matClassificationInts.push_back(inputChar);
+
+				// Append the classification images
+				cv::Mat floatImage;
+				threasholdImageROI.convertTo(floatImage, CV_32FC1);
+				cv::Mat flattenedImage = floatImage.reshape(1, 1);
+				matClassificationImages.push_back(flattenedImage);
+			}
 		}
 	}
 
-	// Get key press
-	int intChar = cv::waitKey(0);
-	if (intChar == 27) 
-	{
-		// If ESC was pressed, quit
-		return 0;
-	}
+	// Write classification data to classification files
+	writeClassificationToFile("./Output/classifications.xml", "classifications", matClassificationInts);
+	writeClassificationToFile("./Output/images.xml", "images", matClassificationImages);
 
 	return 0;
 }
