@@ -11,6 +11,8 @@ const char* INPUT_TRAINING_IMAGE_PATH = "./Input/training_chars.png";
 const char* CLASSIFICATION_INTS_PATH = "./Output/classifications.xml";
 const char* CLASSIFICATION_IMAGES_PATH = "./Output/images.xml";
 
+const double minContourArea = 100.0f;
+
 std::vector<int> validDigits = { '0', '1', '2', '3', '4', '5', '6', '7', '8', '9' };
 std::vector<int> validChars = { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J',
         'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T',
@@ -116,7 +118,6 @@ int doClassification()
 	// Iterate through each of the contours found
 	for (auto &contour : contours)
 	{
-		const double minContourArea = 100.0f;
 		// Check if the detected contour is valid
 		if (cv::contourArea(contour) > minContourArea)
 		{
@@ -166,6 +167,84 @@ int doClassification()
 void doTrainAndTest()
 {
 	// Create KNN object
+	cv::Ptr<cv::ml::KNearest> kNearest(cv::ml::KNearest::create());
+
+	// Train the ML
+	kNearest->train(matClassificationImages, cv::ml::ROW_SAMPLE, matClassificationInts);
+
+	// Test the KNN algorithm
+	const char* inputTestImagePath1 = "./Input/test1.png";
+	cv::Mat inputTestImage1 = cv::imread(inputTestImagePath1);
+	if (inputTestImage1.empty())
+	{
+		std::cout << "Failed to open input test image: " << inputTestImagePath1 << "\n";
+		return;
+	}
+
+	// Process the input image to get the thresholded image
+	cv::Mat thresholdedTestImage1 = imagePreprocessThresholding(inputTestImage1);
+
+	// Make a copy of the thresholded image to find the contours
+	cv::Mat thresholdedTestImage1Copy = thresholdedTestImage1.clone();
+
+	// Find contours
+	std::vector<std::vector<cv::Point> > contours;
+	cv::findContours(thresholdedTestImage1Copy, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+	// Data structure that holds together the list of points that form the contour and the bounding
+	// rectangle. Used to sort the resulting bounding rectangles from left to right.
+	struct ContourData
+	{
+		std::vector<cv::Point> contourPoints;
+		cv::Rect boundingRect;
+
+		static bool sortByXCoordinate(const ContourData &lhs, const ContourData &rhs)
+		{
+			return lhs.boundingRect.x < rhs.boundingRect.x;
+		}
+	};
+
+	// Iterate through each of the contours found and fill in the array of valid contours
+	std::vector<ContourData> listOfContours = {};
+	for (auto &contour : contours)
+	{
+		ContourData contourData = {};
+		contourData.contourPoints = contour;
+		contourData.boundingRect = cv::boundingRect(contour);
+		if (cv::contourArea(contour) > minContourArea)
+			listOfContours.push_back(contourData);
+	}
+
+	// Sort the list of valid contours based on the x coordinate of the bounding rect
+	std::sort(listOfContours.begin(), listOfContours.end(), ContourData::sortByXCoordinate);
+
+	for (auto& contour : listOfContours)
+	{
+		// Draw the bounding rect on top of the test image
+		cv::rectangle(inputTestImage1, contour.boundingRect, cv::Scalar(0.0f, 255.0f, 0.0f), 2);
+
+		// Extract and resize ROI from the test image
+		cv::Mat originalROI = thresholdedTestImage1(contour.boundingRect);
+		cv::Mat threasholdImageROI;
+		cv::resize(originalROI, threasholdImageROI, cv::Size(IMAGE_WIDTH, IMAGE_HEIGHT));
+
+		// Convert elements to float
+		cv::Mat floatImage;
+		threasholdImageROI.convertTo(floatImage, CV_32F);
+		// Reshape mat
+		cv::Mat flattenedImage = floatImage.reshape(1, 1);
+
+		int numOfSamples = 1;
+		cv::Mat matCurrentCharResult(0, 0, CV_32F);
+		kNearest->findNearest(flattenedImage, numOfSamples, matCurrentCharResult);
+
+		// Print to console the current character
+		float currentChar = (float)matCurrentCharResult.at<float>(0, 0);
+		std::cout << (char)(int)(currentChar);
+	}
+
+	// Display the test image
+	cv::imshow("inputTestImage", inputTestImage1);
 }
 
 int main(int argc [[maybe_unused]], char **argv [[maybe_unused]])
@@ -197,6 +276,8 @@ int main(int argc [[maybe_unused]], char **argv [[maybe_unused]])
 
 	// Use the results of the classification to train the ML algorithm and test it
 	doTrainAndTest();
+
+	cv::waitKey(0);
 
 	return 0;
 }
