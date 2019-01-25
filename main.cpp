@@ -154,6 +154,9 @@ int doClassification()
 				cv::Mat flattenedImage = floatImage.reshape(1, 1);
 				matClassificationImages.push_back(flattenedImage);
 			}
+
+			// Draw a rectangle around the detected contour
+			cv::rectangle(inputTrainingNumbersImage, contourRectangle, cv::Scalar(255.0f, 0.0f, 0.0f), 2);
 		}
 	}
 
@@ -164,25 +167,18 @@ int doClassification()
 	return 0;
 }
 
-void doTrainAndTest()
+void trainKNN(cv::Ptr<cv::ml::KNearest> kNearest)
 {
-	// Create KNN object
-	cv::Ptr<cv::ml::KNearest> kNearest(cv::ml::KNearest::create());
-
 	// Train the ML
 	kNearest->train(matClassificationImages, cv::ml::ROW_SAMPLE, matClassificationInts);
+}
 
+void testKNN(const cv::Mat &inputImage, cv::Ptr<cv::ml::KNearest> kNearest)
+{
 	// Test the KNN algorithm
-	const char* inputTestImagePath1 = "./Input/test1.png";
-	cv::Mat inputTestImage1 = cv::imread(inputTestImagePath1);
-	if (inputTestImage1.empty())
-	{
-		std::cout << "Failed to open input test image: " << inputTestImagePath1 << "\n";
-		return;
-	}
 
 	// Process the input image to get the thresholded image
-	cv::Mat thresholdedTestImage1 = imagePreprocessThresholding(inputTestImage1);
+	cv::Mat thresholdedTestImage1 = imagePreprocessThresholding(inputImage);
 
 	// Make a copy of the thresholded image to find the contours
 	cv::Mat thresholdedTestImage1Copy = thresholdedTestImage1.clone();
@@ -221,7 +217,7 @@ void doTrainAndTest()
 	for (auto& contour : listOfContours)
 	{
 		// Draw the bounding rect on top of the test image
-		cv::rectangle(inputTestImage1, contour.boundingRect, cv::Scalar(0.0f, 255.0f, 0.0f), 2);
+		cv::rectangle(inputImage, contour.boundingRect, cv::Scalar(0.0f, 255.0f, 0.0f), 2);
 
 		// Extract and resize ROI from the test image
 		cv::Mat originalROI = thresholdedTestImage1(contour.boundingRect);
@@ -243,8 +239,7 @@ void doTrainAndTest()
 		std::cout << (char)(int)(currentChar);
 	}
 
-	// Display the test image
-	cv::imshow("inputTestImage", inputTestImage1);
+	std::cout << "\n";
 }
 
 int main(int argc [[maybe_unused]], char **argv [[maybe_unused]])
@@ -275,9 +270,54 @@ int main(int argc [[maybe_unused]], char **argv [[maybe_unused]])
 	}
 
 	// Use the results of the classification to train the ML algorithm and test it
-	doTrainAndTest();
+
+	// Load test image
+	const char* inputTestImagePath1 = "./Input/test2.png";
+	cv::Mat inputTestImage1 = cv::imread(inputTestImagePath1);
+	if (inputTestImage1.empty())
+	{
+		std::cout << "Failed to open input test image: " << inputTestImagePath1 << "\n";
+		return -1;
+	}
+
+	// Test KNN
+
+	// Create KNN object
+	cv::Ptr<cv::ml::KNearest> kNearest(cv::ml::KNearest::create());
+	trainKNN(kNearest);
+	testKNN(inputTestImage1, kNearest);
+
+	// Create camera capture instance
+	/*cv::VideoCapture cap = cv::VideoCapture(0);
+	if (cap.isOpened())
+	{
+		while (true)
+		{
+			// Get frame from the camera
+			cv::Mat cameraFrame;
+			if (cap.read(cameraFrame) == false)
+			{
+				std::cout << "Failed to retrieve frame from the camera. Quitting...\n";
+				return -1;
+			}
+
+			cv::imshow("Camera", cameraFrame);
+
+			// Run image through the KNN algorithm
+			testKNN(cameraFrame, kNearest);
+
+			if (cv::waitKey(0) == 27)
+			{
+				cap.release();
+				break;
+			}
+		}
+	}*/
 
 	cv::waitKey(0);
+
+	// Quit
+	cv::destroyAllWindows();
 
 	return 0;
 }
